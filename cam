@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Paint JS — Рисование жестами</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        #container { position: relative; width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        
+        /* Видео с камеры (скрыто или отзеркалено) */
+        #input_video { position: absolute; transform: scaleX(-1); width: 100%; height: 100%; object-fit: cover; opacity: 0.3; }
+        
+        /* Холст для рисования */
+        #output_canvas { position: absolute; transform: scaleX(-1); width: 100%; height: 100%; object-fit: cover; }
+
+        .controls { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px; }
+        button { background: #ffb400; border: none; padding: 10px 20px; cursor: pointer; font-weight: bold; border-radius: 5px; }
+        .status { margin-top: 10px; font-size: 14px; color: #0f0; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <video id="input_video"></video>
+    <canvas id="output_canvas"></canvas>
+
+    <div class="controls">
+        <h2>Air Pen JS</h2>
+        <button onclick="clearCanvas()">Очистить холст</button>
+        <div class="status" id="status">Загрузка ИИ...</div>
+        <p style="font-size: 12px;">Подними указательный палец, чтобы рисовать.<br>Опусти — чтобы перестать.</p>
+    </div>
+</div>
+
+<script>
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const statusDiv = document.getElementById('status');
+
+    let prevX = null;
+    let prevY = null;
+
+    // Настройка размеров холста под экран
+    function resize() {
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function clearCanvas() {
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    }
+
+    function onResults(results) {
+        statusDiv.innerText = "ИИ готов. Рисуйте!";
+        
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const landmarks = results.multiHandLandmarks[0];
+            
+            // Точка №8 — кончик указательного пальца
+            const indexFingerTip = landmarks[8];
+            const x = indexFingerTip.x * canvasElement.width;
+            const y = indexFingerTip.y * canvasElement.height;
+
+            // Проверка: поднят ли палец (кончик выше сустава №6)
+            if (indexFingerTip.y < landmarks[6].y) {
+                if (prevX !== null && prevY !== null) {
+                    canvasCtx.beginPath();
+                    canvasCtx.lineWidth = 8;
+                    canvasCtx.lineCap = 'round';
+                    canvasCtx.strokeStyle = '#00ff00'; // Зеленый цвет
+                    canvasCtx.moveTo(prevX, prevY);
+                    canvasCtx.lineTo(x, y);
+                    canvasCtx.stroke();
+                }
+                prevX = x;
+                prevY = y;
+            } else {
+                prevX = null;
+                prevY = null;
+            }
+        } else {
+            prevX = null;
+            prevY = null;
+        }
+    }
+
+    const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+        },
+        width: 1280,
+        height: 720
+    });
+    camera.start();
+</script>
+
+</body>
+</html>
